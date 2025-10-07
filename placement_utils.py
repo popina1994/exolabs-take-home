@@ -21,18 +21,21 @@ def get_smallest_cycles(cycles: list[list[TopologyNode]]) -> list[list[TopologyN
 def get_shard_assignments(
     model_meta: ModelMetadata,
     selected_cycle: list[TopologyNode],
+    use_descending_allocator: bool = False,
 ) -> ShardAssignments:
     cycle_memory = sum(node.node_profile.memory.ram_available for node in selected_cycle)
     total_layers = model_meta.n_layers
     runner_to_shard: dict[RunnerId, PipelineShardMetadata] = {}
     node_to_runner: dict[NodeId, RunnerId] = {}
 
+    total_model_memory = model_meta.storage_size_kilobytes * 1024
+    scale_memory = total_model_memory if use_descending_allocator else cycle_memory
     layers_assigned = 0
     for i, node in enumerate(selected_cycle):
         if i == len(selected_cycle) - 1:
             node_layers = total_layers - layers_assigned
         else:
-            node_layers = round(total_layers * (node.node_profile.memory.ram_available / cycle_memory))
+            node_layers = round(total_layers * (node.node_profile.memory.ram_available / scale_memory))
             node_layers = max(1, node_layers)
 
         runner_id = RunnerId()
@@ -62,20 +65,20 @@ def get_hosts_from_subgraph(cycle_digraph: Topology) -> list[Host]:
     cycles = cycle_digraph.get_cycles()
     if not cycles:
         return []
-    
+
     cycle = cycles[0]
     hosts: list[Host] = []
     for i in range(len(cycle)):
         current_node = cycle[i]
         next_node = cycle[(i + 1) % len(cycle)]
-        
+
         for connection in cycle_digraph.list_connections():
-            if (connection.local_node.node_id == current_node.node_id and 
+            if (connection.local_node.node_id == current_node.node_id and
                 connection.send_back_node.node_id == next_node.node_id):
                 host = Host(
                     multiaddr=connection.send_back_multiaddr
                 )
                 hosts.append(host)
                 break
-    
+
     return hosts

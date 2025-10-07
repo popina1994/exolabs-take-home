@@ -132,3 +132,19 @@ class Topology:
             ):
                 topology.add_connection(connection)
         return topology
+
+    def get_shortest_paths(self) -> dict[NodeId, list[TopologyNode]]:
+        rx_shortest_paths: rx.AllPairsPathLengthMapping = \
+            rx.all_pairs_dijkstra_shortest_paths(g, edge_cost_fn=lambda e: e)
+
+        shortest_paths_dict = {}
+        for rx_source_node, rx_target_node_paths in sp.items():
+            source_node = self._rx_id_to_node_id_map[rx_source_node]
+            target_node_paths = {}
+            for rx_target_node, rx_path in rx_target_node_paths.items():
+                path = [self._graph.get_node_data(rx_node) for rx_node in rx_path]
+                target_node_paths[self._rx_id_to_node_id_map[rx_node]] = path
+            shortest_paths_dict[source_node] = target_node_paths
+
+
+        return shortest_paths_dict

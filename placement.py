@@ -1,10 +1,11 @@
-from .data_types.topology import Topology
+from .data_types.topology import Topology, TopologyNode
 from .data_types.topology_snapshot import TopologySnapshot
 from .data_types.events import Event, Instance, Host, InstanceCreated, InstanceDeleted
 from .data_types.shards import CreateInstanceCommand
 from .data_types.common import InstanceId, EventId
 
 from copy import deepcopy
+import sys
 
 from .placement_utils import (
     filter_cycles_by_memory,
@@ -85,17 +86,19 @@ A multi-resource scheduling of sequence of tasks T_1, T_2, ..., T_k, is a traver
 In other words, there is sufficient memory in the N_j node to evaluate task T_i.
 
 
-We want find to find -resource scheduling that has minimal the following sequence:
-find l paths
+We want find to find -resource scheduling that for any of the following sequences:
 (N_{1,1}, E_{1,1}, N_{1, 2}, ..., E_{1, l_1}, N_{1,l_1+1}),
 (N_{1,l_1+1}, E_{2, 1}, N_{2, 2}, ..., E_{1, l_2},  N_{2,l_2 + 1}),
 ...
 (N_{l-1,l_{l-1} + 1}, E_{l, 1}, N_{l, 2}, ..., E_{l, l_l},  N_{l,l_l + 1}), ...
-where
-sum_i ^l {L(E_{i, 1}) + B(C_{i, 1}) * d + L(E_{i, 2}) + B(C_{i, 2}) * d + ...
-+ E_{i, L_1}} + B(C_{i, L_1}) * d + C(N_{1,i}) + C(N_{1, l+1}) is minimized,
-where L returns the latency of the edge E_{i, 1}, C returns the time to compute all the assigned operations on the input node, B returns the bandwidth of the input link,
+find the following value minimized
+sum_i ^l ({L(E_{i, 1}) + B(C_{i, 1}) * d + L(E_{i, 2}) + B(C_{i, 2}) * d + ...
++ E_{i, L_1}} + B(C_{i, L_1}) * d + C(N_{i,l_{i} + 1}))
++ C(N_{l, l_l +1})
+
+where L returns the latency of the edge E_{i, 1}, C returns the time to compute all the assigned operations on the input node, B returns the bandwidth of the input communication link,
 d returns the amount of data that needs to be transferred between two nodes.
+d is always the same for one model.
 
 Optimal solution (exponential)
 We need to try each of N! traversals and in each case we compute the function and see which function
@@ -107,45 +110,56 @@ node with the highest number of FLOPs etc and select for this to be the optimal 
 """
 def get_instance_placements_snapshot(
     command: CreateInstanceCommand,
-    topology: TopologySnapshot,
+    topology_snapshot: TopologySnapshot,
     current_instances: dict[InstanceId, Instance],
     instance_id: InstanceId | None = None,
 ) -> dict[InstanceId, Instance]:
-    return dict()
-    # if instance_id is None:
-    #     instance_id = InstanceId()
-    # available_models = [current_instances[instance].shard_assignments.model_id for instance in current_instances]
-    # if command.model_meta.model_id in available_models:
-    #     raise ValueError(f"Instance for {command.model_meta.model_id} already exists")
+    if instance_id is None:
+        instance_id = InstanceId()
+    available_models = [current_instances[instance].shard_assignments.model_id for instance in current_instances]
+    if command.model_meta.model_id in available_models:
+        raise ValueError(f"Instance for {command.model_meta.model_id} already exists")
 
-    # all_nodes = topology.list_nodes()
-    # cycles = topology.get_cycles()
-    # # we can also always just have a node on its own
-    # # Why do we need to have cycles? In other words why do we need to have all connections?
-    # singleton_cycles = [[node] for node in all_nodes]
-    # candidate_cycles = cycles + singleton_cycles
+    all_nodes = topology_snapshot.topology.list_nodes()
+    shortest_paths = topology_snapshot.topology.get_shortest_paths()
 
-    # cycles_with_sufficient_memory = filter_cycles_by_memory(candidate_cycles, command.model_meta.storage_size_kilobytes * 1024)
-    # if not cycles_with_sufficient_memory:
-    #     raise ValueError("No cycles found with sufficient memory")
+    best_perm: list[TopologyNode] = []
+    best_latency: int = sys.maxsize
+    model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
+    """
+    # TODO: figure out permutations
+    # TODO: correct the remaining parts.
+    for all_nodes_perm in next_permutation(all_nodes):
+        idx_prev = None
+        total_latency = 0
+        for idx, node in enumerate(all_nodes_perm):
+            memory_used = min(node.available_ram, model_size_to_store)
+            node.available_ram -= memory_used
+            model_size_to_store -= memory_used
+            comp_latency = memory_used/compute_time
+            total_latency += comp_latency
+            if idx_prev is not None:
+                total_latency += total_sum(shortest_paths[nodes[idx_prev]][node] + d/band (element-wise))
+            idx_prev = idx
+        if total_latency <= best_latency:
+            best_perm = all_nodes_perm
+            best_latency = total_latency
 
-    # smallest_cycles = get_smallest_cycles(cycles_with_sufficient_memory)
-    # selected_cycle = max(smallest_cycles, key=lambda cycle: sum(node.node_profile.memory.ram_available for node in cycle))
+    """
+    # We need to determine the sharding of layers to nodes using proportional ratio?
+    shard_assignments = get_shard_assignments(command.model_meta, best_perm, True)
 
-    # # We need to determine the sharding of layers to nodes using proportional ratio?
-    # shard_assignments = get_shard_assignments(command.model_meta, selected_cycle)
+    cycle_digraph: Topology = topology_snapshot.topology.get_subgraph_from_nodes(best_perm)
+    hosts: list[Host] = get_hosts_from_subgraph(cycle_digraph)
 
-    # cycle_digraph: Topology = topology.get_subgraph_from_nodes(selected_cycle)
-    # hosts: list[Host] = get_hosts_from_subgraph(cycle_digraph)
-
-    # target_instances = deepcopy(current_instances)
-    # target_instances[instance_id] = Instance(
-    #     instance_id=instance_id,
-    #     instance_active=True,
-    #     shard_assignments=shard_assignments,
-    #     hosts=hosts
-    # )
-    # return target_instances
+    target_instances = deepcopy(current_instances)
+    target_instances[instance_id] = Instance(
+        instance_id=instance_id,
+        instance_active=True,
+        shard_assignments=shard_assignments,
+        hosts=hosts
+    )
+    return target_instances
 
 
 
