@@ -1,0 +1,344 @@
+{
+    "node_status": {},
+    "instances": {},
+    "runners": {},
+    "tasks": {},
+    "node_profiles": {
+        "HronE1pd3Rn53PJsPc4sLdPdeBRBckTr8zZh6xcJwois": {
+            "model_id": "MacBook Pro",
+            "chip_id": "Apple M4 Max",
+            "friendly_name": "gary",
+            "memory": {
+                "ram_total": 51539607552,
+                "ram_available": 9927229440,
+                "swap_total": 0,
+                "swap_available": 0
+            },
+            "network_interfaces": [
+                {
+                    "name": "en0",
+                    "ip_address": "fe80::410:7217:838c:2cb6%en0",
+                    "type": "wifi"
+                },
+                {
+                    "name": "en0",
+                    "ip_address": "10.173.226.88",
+                    "type": "wifi"
+                },
+                {
+                    "name": "awdl0",
+                    "ip_address": "fe80::c069:38ff:fe54:5c49%awdl0",
+                    "type": "other"
+                },
+                {
+                    "name": "llw0",
+                    "ip_address": "fe80::c069:38ff:fe54:5c49%llw0",
+                    "type": "other"
+                },
+                {
+                    "name": "utun1",
+                    "ip_address": "fe80::d21:e829:59d3:4507%utun1",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun2",
+                    "ip_address": "fe80::9729:f21c:2a97:bfdf%utun2",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun3",
+                    "ip_address": "fe80::1369:99fd:8b68:b82%utun3",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun4",
+                    "ip_address": "fe80::ce81:b1c:bd2c:69e%utun4",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun6",
+                    "ip_address": "fe80::48cc:27c:83dd:5699%utun6",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun5",
+                    "ip_address": "10.24.18.43",
+                    "type": "vpn"
+                }
+            ],
+            "system": {
+                "flops_fp16": 0.0,
+                "gpu_usage": 0.004790052,
+                "temp": 50.66404,
+                "sys_power": 31.236696,
+                "pcpu_usage": 0.1687013,
+                "ecpu_usage": 0.24687259,
+                "ane_power": 0.0
+            }
+        },
+        "Fh9dcbeZMm9amiwpPJ8CkS6943seN2aJNUrcdwYfb6CZ": {
+            "model_id": "MacBook Pro",
+            "chip_id": "Apple M4 Max",
+            "friendly_name": "gary",
+            "memory": {
+                "ram_total": 51539607552,
+                "ram_available": 9725853696,
+                "swap_total": 0,
+                "swap_available": 0
+            },
+            "network_interfaces": [
+                {
+                    "name": "en0",
+                    "ip_address": "fe80::410:7217:838c:2cb6%en0",
+                    "type": "wifi"
+                },
+                {
+                    "name": "en0",
+                    "ip_address": "10.173.226.88",
+                    "type": "wifi"
+                },
+                {
+                    "name": "awdl0",
+                    "ip_address": "fe80::c069:38ff:fe54:5c49%awdl0",
+                    "type": "other"
+                },
+                {
+                    "name": "llw0",
+                    "ip_address": "fe80::c069:38ff:fe54:5c49%llw0",
+                    "type": "other"
+                },
+                {
+                    "name": "utun1",
+                    "ip_address": "fe80::d21:e829:59d3:4507%utun1",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun2",
+                    "ip_address": "fe80::9729:f21c:2a97:bfdf%utun2",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun3",
+                    "ip_address": "fe80::1369:99fd:8b68:b82%utun3",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun4",
+                    "ip_address": "fe80::ce81:b1c:bd2c:69e%utun4",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun6",
+                    "ip_address": "fe80::48cc:27c:83dd:5699%utun6",
+                    "type": "vpn"
+                },
+                {
+                    "name": "utun5",
+                    "ip_address": "10.24.18.43",
+                    "type": "vpn"
+                }
+            ],
+            "system": {
+                "flops_fp16": 0.0,
+                "gpu_usage": 0.011562035,
+                "temp": 50.729588,
+                "sys_power": 32.732624,
+                "pcpu_usage": 0.18224698,
+                "ecpu_usage": 0.08472086,
+                "ane_power": 0.0
+            }
+        }
+    },
+    "topology": {
+        "nodes": [
+            {
+                "node_id": "HronE1pd3Rn53PJsPc4sLdPdeBRBckTr8zZh6xcJwois",
+                "node_profile": {
+                    "model_id": "MacBook Pro",
+                    "chip_id": "Apple M4 Max",
+                    "friendly_name": "gary",
+                    "memory": {
+                        "ram_total": 51539607552,
+                        "ram_available": 9927229440,
+                        "swap_total": 0,
+                        "swap_available": 0
+                    },
+                    "network_interfaces": [
+                        {
+                            "name": "en0",
+                            "ip_address": "fe80::410:7217:838c:2cb6%en0",
+                            "type": "wifi"
+                        },
+                        {
+                            "name": "en0",
+                            "ip_address": "10.173.226.88",
+                            "type": "wifi"
+                        },
+                        {
+                            "name": "awdl0",
+                            "ip_address": "fe80::c069:38ff:fe54:5c49%awdl0",
+                            "type": "other"
+                        },
+                        {
+                            "name": "llw0",
+                            "ip_address": "fe80::c069:38ff:fe54:5c49%llw0",
+                            "type": "other"
+                        },
+                        {
+                            "name": "utun1",
+                            "ip_address": "fe80::d21:e829:59d3:4507%utun1",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun2",
+                            "ip_address": "fe80::9729:f21c:2a97:bfdf%utun2",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun3",
+                            "ip_address": "fe80::1369:99fd:8b68:b82%utun3",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun4",
+                            "ip_address": "fe80::ce81:b1c:bd2c:69e%utun4",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun6",
+                            "ip_address": "fe80::48cc:27c:83dd:5699%utun6",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun5",
+                            "ip_address": "10.24.18.43",
+                            "type": "vpn"
+                        }
+                    ],
+                    "system": {
+                        "flops_fp16": 0.0,
+                        "gpu_usage": 0.004790052,
+                        "temp": 50.66404,
+                        "sys_power": 31.236696,
+                        "pcpu_usage": 0.1687013,
+                        "ecpu_usage": 0.24687259,
+                        "ane_power": 0.0
+                    }
+                }
+            },
+            {
+                "node_id": "Fh9dcbeZMm9amiwpPJ8CkS6943seN2aJNUrcdwYfb6CZ",
+                "node_profile": {
+                    "model_id": "MacBook Pro",
+                    "chip_id": "Apple M4 Max",
+                    "friendly_name": "gary",
+                    "memory": {
+                        "ram_total": 51539607552,
+                        "ram_available": 9725853696,
+                        "swap_total": 0,
+                        "swap_available": 0
+                    },
+                    "network_interfaces": [
+                        {
+                            "name": "en0",
+                            "ip_address": "fe80::410:7217:838c:2cb6%en0",
+                            "type": "wifi"
+                        },
+                        {
+                            "name": "en0",
+                            "ip_address": "10.173.226.88",
+                            "type": "wifi"
+                        },
+                        {
+                            "name": "awdl0",
+                            "ip_address": "fe80::c069:38ff:fe54:5c49%awdl0",
+                            "type": "other"
+                        },
+                        {
+                            "name": "llw0",
+                            "ip_address": "fe80::c069:38ff:fe54:5c49%llw0",
+                            "type": "other"
+                        },
+                        {
+                            "name": "utun1",
+                            "ip_address": "fe80::d21:e829:59d3:4507%utun1",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun2",
+                            "ip_address": "fe80::9729:f21c:2a97:bfdf%utun2",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun3",
+                            "ip_address": "fe80::1369:99fd:8b68:b82%utun3",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun4",
+                            "ip_address": "fe80::ce81:b1c:bd2c:69e%utun4",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun6",
+                            "ip_address": "fe80::48cc:27c:83dd:5699%utun6",
+                            "type": "vpn"
+                        },
+                        {
+                            "name": "utun5",
+                            "ip_address": "10.24.18.43",
+                            "type": "vpn"
+                        }
+                    ],
+                    "system": {
+                        "flops_fp16": 0.0,
+                        "gpu_usage": 0.011562035,
+                        "temp": 50.729588,
+                        "sys_power": 32.732624,
+                        "pcpu_usage": 0.18224698,
+                        "ecpu_usage": 0.08472086,
+                        "ane_power": 0.0
+                    }
+                }
+            }
+        ],
+        "connections": [
+            {
+                "local_node_id": "HronE1pd3Rn53PJsPc4sLdPdeBRBckTr8zZh6xcJwois",
+                "send_back_node_id": "Fh9dcbeZMm9amiwpPJ8CkS6943seN2aJNUrcdwYfb6CZ",
+                "local_multiaddr": {
+                    "address": "/ip4/10.173.226.88/tcp/60687",
+                    "address_type": "ip4",
+                    "ip_address": "10.173.226.88",
+                    "port": 60687
+                },
+                "send_back_multiaddr": {
+                    "address": "/ip4/10.173.226.88/tcp/60742",
+                    "address_type": "ip4",
+                    "ip_address": "10.173.226.88",
+                    "port": 60742
+                },
+                "connection_profile": null
+            },
+            {
+                "local_node_id": "Fh9dcbeZMm9amiwpPJ8CkS6943seN2aJNUrcdwYfb6CZ",
+                "send_back_node_id": "HronE1pd3Rn53PJsPc4sLdPdeBRBckTr8zZh6xcJwois",
+                "local_multiaddr": {
+                    "address": "/ip4/10.173.226.88/tcp/60742",
+                    "address_type": "ip4",
+                    "ip_address": "10.173.226.88",
+                    "port": 60742
+                },
+                "send_back_multiaddr": {
+                    "address": "/ip4/10.173.226.88/tcp/60687",
+                    "address_type": "ip4",
+                    "ip_address": "10.173.226.88",
+                    "port": 60687
+                },
+                "connection_profile": null
+            }
+        ],
+    },
+    "history": [],
+    "last_event_applied_idx": 122
+}
