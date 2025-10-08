@@ -182,13 +182,13 @@ def get_instance_placements_snapshot(
             logging.debug(f"MEMORY USED{memory_used} f{node_available_memory[node.node_id]} {model_size_to_store}")
             node_available_memory[node.node_id] -= memory_used
             model_size_to_store -= memory_used
-            #TODO: Model different layers of computation
-            # TODO: add latency when the bandwidth is occupied?
-            #TODO: Add different compute models costs?
-            # Here we assume models is memory bound in other words
-            # compute is faster than memory reads, thus we are bound on comp_latency.
-            # Otherwise, we would compute the latency as the maximum of these two ratios.
-            comp_latency = int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
+            # Here we check by what the node is bounded: compute or memory.
+            # It should also be noted when we have multiple tasks evaluated on the same node
+            # we would need to account for the dependency of one task on another and the whole computation model should be changed: either add additional dependencies or account for
+            # sharing of bandwidth and compute.
+            flops_latency = int(memory_used / 2 / node.node_profile.system.flops_fp16)
+            memory_ready_latency=  int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
+            comp_latency = max(flops_latency, memory_ready_latency)
             total_latency += comp_latency
             if prev_node is not None:
                 path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,

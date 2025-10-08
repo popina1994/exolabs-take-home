@@ -41,7 +41,7 @@ def create_nodes_comprehensive():
                     ),
                     network_interfaces=[],
                     system=SystemPerformanceProfile(
-                        flops_fp16=1000, mem_bandwidth_kbps=mem_bandwidth_kbps[i]
+                        flops_fp16=1000000000, mem_bandwidth_kbps=mem_bandwidth_kbps[i]
                     ),
                 ),
             )
