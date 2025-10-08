@@ -25,7 +25,6 @@ import itertools
 
 @pytest.fixture
 def topology() -> Topology:
-    print("Topology")
     return Topology()
 
 
@@ -56,7 +55,6 @@ def create_instances():
 
 @pytest.fixture
 def model_meta() -> ModelMetadata:
-    print("Model meta")
     return ModelMetadata(
         model_id=ModelId("test-model"),
         storage_size_kilobytes=1000,
@@ -115,7 +113,6 @@ def test_get_instance_placements_with_multiple_models(
     nodes = create_nodes_comprehensive(
         node_ids, total_mem_kb, total_mem_kb, mem_bandwidth_kbps
     )
-    print(nodes)
     node_dict = {node.node_id: node for node in nodes}
 
     for node in nodes:
@@ -156,11 +153,9 @@ def test_get_instance_placements_with_multiple_models(
                 shard_mem_kb = round(
                     (shard.end_layer - shard.start_layer) / n_layers * model_mem_kb
                 )
-                print("NODE", node_id, node_dict[node_id].node_profile.memory.ram_available)
                 node_dict[node_id].node_profile.memory.ram_available -= (
                     shard_mem_kb * 1024
                 )
-                print("NODE", node_id, node_dict[node_id].node_profile.memory.ram_available)
                 shards.append(shard)
             else:
                 shards.append(None)

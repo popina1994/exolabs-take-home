@@ -7,6 +7,7 @@ from .data_types.common import InstanceId, EventId
 from copy import deepcopy
 from itertools import permutations
 from enum import Enum
+from math import ceil
 import logging
 import sys
 
@@ -93,15 +94,15 @@ def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
         connection: Connection | None = topology.get_connection(
             prev_node_path.node_id, node_path.node_id)
         if connection is None:
-            print("CONNECTION", prev_node_path.node_id, node_path.node_id)
+            logging.debug(f"CONNECTION {prev_node_path.node_id} {node_path.node_id}")
             return None
         # bandwidth
-        path_latency += connection.connection_profile.latency
+        path_latency += int(connection.connection_profile.latency)
         # We assume the data is moved from a node to a node as a whole,
         #  and is not forwarded further until the whole data is moved.
         # If the data can be moved from a node to a node as a stream, then
         # the total_latency is increased only once
-        path_latency += data_to_move_size / connection.connection_profile.throughput
+        path_latency += int(data_to_move_size / connection.connection_profile.throughput)
         prev_node_path = node_path
 
     return path_latency
@@ -166,14 +167,12 @@ def get_instance_placements_snapshot(
         prev_node = None
         total_latency = 0
         model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
-        # TODO: ceil division?
-        data_to_move_size = model_size_to_store / command.model_meta.n_layers
+        data_to_move_size = ceil(model_size_to_store / command.model_meta.n_layers)
         node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
         there_is_path = True
         cur_perm = all_nodes_perm
 
         for idx, node in enumerate(all_nodes_perm):
-            print("IDX", idx, node.node_id, command.model_meta.storage_size_kilobytes )
             if model_size_to_store == 0:
                 cur_perm = all_nodes_perm[:idx]
                 break
@@ -186,13 +185,18 @@ def get_instance_placements_snapshot(
             # It should also be noted when we have multiple tasks evaluated on the same node
             # we would need to account for the dependency of one task on another and the whole computation model should be changed: either add additional dependencies or account for
             # sharing of bandwidth and compute.
+            # The dependency evaluation would require the whole model to be changed by accounting
+            # how long certain parts take time and at which stages those parts are active cpu/bandwidth
+            # network.
+            # If we assume consistent flow of bandwidth and compute (all the time model effectively uses bandwidth/cpu and network), we would need to proportionally to account for latency
+            # of all the running models.
             flops_latency = int(memory_used / 2 / node.node_profile.system.flops_fp16)
             memory_ready_latency=  int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
             comp_latency = max(flops_latency, memory_ready_latency)
             total_latency += comp_latency
             if prev_node is not None:
                 path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
-                                                   data_to_move_size=data_to_move_size)
+                                                   data_to_move_size=float(data_to_move_size))
                 if path_latency is None:
                     there_is_path = False
                     break
@@ -206,7 +210,7 @@ def get_instance_placements_snapshot(
         if there_is_path and (total_latency <= best_latency):
             best_perm = cur_perm
             best_latency = total_latency
-    print(best_perm)
+    logging.debug(f"BEST PERMUTATION {best_perm}")
     shard_assignments = get_shard_assignments(command.model_meta, best_perm, True)
 
     cycle_digraph: Topology = topology_snapshot.topology.get_subgraph_from_nodes(best_perm)
