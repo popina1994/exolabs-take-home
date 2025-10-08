@@ -162,7 +162,6 @@ def get_instance_placements_snapshot(
 
     logging.basicConfig(level=logging.DEBUG)
     logging.debug(f"SHORTEST PATHS: {shortest_paths}")
-    # logging.debug(f"PERMUTATIONS: {all_perms}")
     for all_nodes_perm in all_perms:
         prev_node = None
         total_latency = 0
@@ -171,27 +170,31 @@ def get_instance_placements_snapshot(
         data_to_move_size = model_size_to_store / command.model_meta.n_layers
         node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
         there_is_path = True
+        cur_perm = all_nodes_perm
 
         for idx, node in enumerate(all_nodes_perm):
             print("IDX", idx, node.node_id, command.model_meta.storage_size_kilobytes )
             if model_size_to_store == 0:
+                cur_perm = all_nodes_perm[:idx]
                 break
 
             memory_used = min(node_available_memory[node.node_id], model_size_to_store)
             logging.debug(f"MEMORY USED{memory_used} f{node_available_memory[node.node_id]} {model_size_to_store}")
             node_available_memory[node.node_id] -= memory_used
             model_size_to_store -= memory_used
-            #TODO: Add different compute models costs?
             #TODO: Model different layers of computation
             # TODO: add latency when the bandwidth is occupied?
-            comp_latency = int(memory_used / node.node_profile.system.flops_fp16)
+            #TODO: Add different compute models costs?
+            # Here we assume models is memory bound in other words
+            # compute is faster than memory reads, thus we are bound on comp_latency.
+            # Otherwise, we would compute the latency as the maximum of these two ratios.
+            comp_latency = int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
             total_latency += comp_latency
             if prev_node is not None:
                 path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
                                                    data_to_move_size=data_to_move_size)
                 if path_latency is None:
                     there_is_path = False
-                    print("NO PATH")
                     break
                 else:
                     total_latency += path_latency
@@ -201,9 +204,9 @@ def get_instance_placements_snapshot(
             raise ValueError("No cycles found with sufficient memory")
 
         if there_is_path and (total_latency <= best_latency):
-            best_perm = all_nodes_perm
+            best_perm = cur_perm
             best_latency = total_latency
-
+    print(best_perm)
     shard_assignments = get_shard_assignments(command.model_meta, best_perm, True)
 
     cycle_digraph: Topology = topology_snapshot.topology.get_subgraph_from_nodes(best_perm)

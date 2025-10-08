@@ -73,23 +73,28 @@ def create_instance_command(model_meta: ModelMetadata) -> CreateInstanceCommand:
 
 # NOTE: The current placer is intentionally simple for the take home - update the tests as you update placement!
 @pytest.mark.parametrize(
-    "placement_algorithm, mem_bandwidth_kbps, total_mem_kb, models",
+    "placement_algorithm,mem_bandwidth_kbps,total_mem_kb,models",
     [
-        (algo, mem_bandwidth_kbps, total_mem_kb, models)
-        for algo, (mem_bandwidth_kbps, total_mem_kb, models) in itertools.product(
-            [PlacementAlgorithm.Cycle, PlacementAlgorithm.MinimalLatency],
+        (
+            PlacementAlgorithm.Cycle,
+            (900_000_000, 800_000_000, 100_000_000, 800_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             [
-                (
-                    (900_000_000, 800_000_000, 100_000_000, 800_000_000),
-                    (512_000_000, 256_000_000, 256_000_000, 126_000_000),
-                    [
-                        (150_000_000, 150, [150, 0, 0, 0]),
-                        (150_000_000, 150, [150, 0, 0, 0]),
-                        (150_000_000, 150, [0, 150, 0, 0]),
-                    ],
-                ),
-            ]
-        )
+                (150_000_000, 150, [150, 0, 0, 0]),
+                (150_000_000, 150, [150, 0, 0, 0]),
+                (150_000_000, 150, [0, 150, 0, 0]),
+            ],
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency,
+            (100_000_000, 800_000_000, 700_000_000, 900_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
+            [
+                (150_000_000, 150, [0, 150, 0, 0]),
+                (150_000_000, 150, [0, 0, 150, 0]),
+                (150_000_000, 150, [150, 0, 0, 0]),
+            ],
+        ),
     ],
 )
 def test_get_instance_placements_with_multiple_models(

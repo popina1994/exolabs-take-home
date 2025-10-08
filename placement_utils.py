@@ -30,6 +30,7 @@ def get_shard_assignments(
 
     total_model_memory = model_meta.storage_size_kilobytes * 1024
     scale_memory = total_model_memory if use_descending_allocator else cycle_memory
+    memory_needed = scale_memory
     layers_assigned = 0
     for i, node in enumerate(selected_cycle):
         if i == len(selected_cycle) - 1:
@@ -37,6 +38,7 @@ def get_shard_assignments(
         else:
             node_layers = round(total_layers * (node.node_profile.memory.ram_available / scale_memory))
             node_layers = max(1, node_layers)
+            memory_needed = memory_needed - min(node.node_profile.memory.ram_available, memory_needed)
 
         runner_id = RunnerId()
         shard = PipelineShardMetadata(
@@ -48,9 +50,12 @@ def get_shard_assignments(
             n_layers=total_layers
         )
 
+
         runner_to_shard[runner_id] = shard
         node_to_runner[node.node_id] = runner_id
         layers_assigned += node_layers
+        if memory_needed == 0 and use_descending_allocator:
+            break
 
     shard_assignments = ShardAssignments(
         model_id=model_meta.model_id,

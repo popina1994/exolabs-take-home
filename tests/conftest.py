@@ -69,7 +69,7 @@ def create_node():
                     swap_available=1000,
                 ),
                 network_interfaces=[],
-                system=SystemPerformanceProfile(flops_fp16=1000),
+                system=SystemPerformanceProfile(flops_fp16=1000, mem_bandwidth_kbps=100),
             ),
         )
 
