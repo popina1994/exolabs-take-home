@@ -140,7 +140,7 @@ class Topology:
 
     def get_shortest_paths(self) -> dict[NodeId, dict[NodeId, list[TopologyNode]]]:
         rx_shortest_paths: rx.AllPairsPathLengthMapping = \
-            rx.all_pairs_dijkstra_shortest_paths(g, edge_cost_fn=lambda e: e)
+            rx.all_pairs_dijkstra_shortest_paths(self._graph, edge_cost_fn=lambda e: e)
 
         shortest_paths_dict: dict[NodeId, dict[NodeId, list[TopologyNode]]] = {}
         for rx_source_node, rx_target_node_paths in rx_shortest_paths.items():

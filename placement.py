@@ -1,4 +1,4 @@
-from .data_types.topology import Topology, TopologyNode, Connection
+from .data_types.topology import Topology, TopologyNode, Connection, NodeId
 from .data_types.topology_snapshot import TopologySnapshot
 from .data_types.events import Event, Instance, Host, InstanceCreated, InstanceDeleted, InstanceActivated, InstanceDeactivated, InstanceReplacedAtomically
 from .data_types.shards import CreateInstanceCommand
@@ -6,6 +6,9 @@ from .data_types.common import InstanceId, EventId
 
 from copy import deepcopy
 from itertools import permutations
+from enum import Enum
+import logging
+import sys
 
 from .placement_utils import (
     filter_cycles_by_memory,
@@ -13,6 +16,10 @@ from .placement_utils import (
     get_shard_assignments,
     get_smallest_cycles,
 )
+
+class PlacementAlgorithm(Enum):
+    Cycle = 1
+    MinimalLatency = 2
 
 """
 Find the cycle with the smallest amount of memory that can store the whole command. model.
@@ -29,7 +36,7 @@ Runner generally is a thread that runs a task?
 Instances are just a wrapper of shard asignements (mapping between shards and nodes)
  and hosts
 """
-def get_instance_placements(
+def get_instance_placements_cycle(
     command: CreateInstanceCommand,
     topology: Topology,
     current_instances: dict[InstanceId, Instance],
@@ -122,7 +129,6 @@ def get_instance_placements_snapshot(
 
     all_nodes = topology_snapshot.topology.list_nodes()
     shortest_paths = topology_snapshot.topology.get_shortest_paths()
-
     best_perm: list[TopologyNode] = []
     best_latency: int = sys.maxsize
     model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
@@ -132,17 +138,26 @@ def get_instance_placements_snapshot(
     # TODO: ceil division?
     data_to_move_size = model_size_to_store / command.model_meta.n_layers
     #TODO: what if no memory to store model? Sit and cry :)
+
+    logging.basicConfig(level=logging.DEBUG)
+    logging.debug(f"DATA TO MOVE: {model_size_to_store}")
+    logging.debug(f"DATA TO MOVE: {data_to_move_size}")
+    logging.debug(f"SHORTEST PATHS: {shortest_paths}")
+    logging.debug(f"PERMUTATIONS: {all_perms}")
     for all_nodes_perm in all_perms:
         prev_node = None
         total_latency = 0
+        # nodes memory used initialize copies
+        node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
         for node in all_nodes_perm:
             if model_size_to_store == 0:
                 break
-            memory_used = min(node.node_profile.memory.ram_available, model_size_to_store)
-            node.node_profile.memory.ram_available -= memory_used
+            memory_used = min(node_available_memory[node.node_id], model_size_to_store)
+            node_available_memory[node.node_id] -= memory_used
             model_size_to_store -= memory_used
-            #TODO: Add different flops?
+            #TODO: Add different compute models costs?
             #TODO: Model different layers of computation
+            # TODO: add latency when the bandwidth is occupied?
             comp_latency = memory_used / node.node_profile.system.flops_fp16
             total_latency += comp_latency
             if prev_node is not None:
@@ -161,6 +176,9 @@ def get_instance_placements_snapshot(
                     prev_node_path = node_path
 
             prev_node = node
+
+        if model_size_to_store > 0:
+            raise ValueError("No cycles found with sufficient memory")
 
         if total_latency <= best_latency:
             best_perm = all_nodes_perm
@@ -182,6 +200,32 @@ def get_instance_placements_snapshot(
 
 
 
+"""
+Find the cycle with the smallest amount of memory that can store the whole command. model.
+Then, for each of the nodes belonging to cycle proportionally assign number of layers in the model as
+much as this node contributes to the total amount of memory.
+These layers combined on node node represent shard.
+Each shard is run using one runner.
+In other words, for each model and shard, there is one runner on a node.
+
+If there are multiple cycles to choose, first one with the smallest number of nodes,
+than we choose the one with the largest amount of
+available memory.
+Runner generally is a thread that runs a task?
+Instances are just a wrapper of shard asignements (mapping between shards and nodes)
+ and hosts
+"""
+def get_instance_placements(
+    command: CreateInstanceCommand,
+    topology_snapshot: TopologySnapshot,
+    current_instances: dict[InstanceId, Instance],
+    instance_id: InstanceId | None = None,
+    placement_algorithm: PlacementAlgorithm = PlacementAlgorithm.Cycle
+) -> dict[InstanceId, Instance]:
+    if placement_algorithm == PlacementAlgorithm.Cycle:
+        return get_instance_placements_cycle(command=command, topology=topology_snapshot.topology, current_instances=current_instances, instance_id=instance_id)
+    else:
+        return get_instance_placements_snapshot(command=command, topology_snapshot=topology_snapshot, current_instances=current_instances, instance_id=instance_id)
 
 def get_transition_events(
     current_instances: dict[InstanceId, Instance],

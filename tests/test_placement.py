@@ -2,8 +2,9 @@ from typing import Callable
 
 import pytest
 
-from ..placement import get_instance_placements, get_transition_events
+from ..placement import get_instance_placements, get_transition_events, PlacementAlgorithm
 from ..data_types.topology import Topology
+from ..data_types.topology_snapshot import TopologySnapshot
 from ..data_types.common import NodeId, ModelId
 from ..data_types.events import (
     InstanceCreated,
@@ -19,6 +20,7 @@ from ..data_types.common import InstanceId
 from ..data_types.events import Instance
 from ..data_types.shards import ShardAssignments
 import logging
+import itertools
 
 
 @pytest.fixture
@@ -126,9 +128,10 @@ def test_get_instance_placements_with_multiple_models(
         )
 
         # act
+        topology_snapshot = TopologySnapshot(topology)
         instance_id = InstanceId()
         instances = get_instance_placements(
-            create_instance_command, topology, instances, instance_id
+            create_instance_command, topology_snapshot, instances, instance_id
         )
 
         instance = instances[instance_id]
@@ -234,7 +237,8 @@ def test_get_instance_placements_create_instance_comprehensive(
                 topology.add_connection(create_connection(node_1, node_2))
 
     # act
-    placements = get_instance_placements(create_instance_command, topology, {})
+    topology_snapshot = TopologySnapshot(topology)
+    placements = get_instance_placements(create_instance_command, topology_snapshot, {})
 
     # assert
     assert len(placements) == 1
@@ -267,14 +271,21 @@ def test_get_instance_placements_create_instance_comprehensive(
 
 
 @pytest.mark.parametrize(
-    "available_memory,total_layers,expected_layers",
+    "placement_algorithm, available_memory,total_layers,expected_layers",
     [
-        ((500, 500, 1000), 12, (3, 3, 6)),
-        ((500, 500, 500), 12, (4, 4, 4)),
-        ((312, 518, 1024), 12, (2, 3, 7)),
+        (alg, mem, total, expected)
+        for alg, (mem, total, expected) in itertools.product(
+            [PlacementAlgorithm.Cycle, PlacementAlgorithm.MinimalLatency],
+            [
+                ((500, 500, 1000), 12, (3, 3, 6)),
+                ((500, 500, 500), 12, (4, 4, 4)),
+                ((312, 518, 1024), 12, (2, 3, 7)),
+            ],
+        )
     ],
 )
 def test_get_instance_placements_create_instance(
+    placement_algorithm: PlacementAlgorithm,
     available_memory: tuple[int, int, int],
     total_layers: int,
     expected_layers: tuple[int, int, int],
@@ -306,7 +317,8 @@ def test_get_instance_placements_create_instance(
     topology.add_connection(create_connection(node_c, node_a))
 
     # act
-    placements = get_instance_placements(create_instance_command, topology, {})
+    topology_snapshot = TopologySnapshot(topology=topology)
+    placements = get_instance_placements(create_instance_command, topology_snapshot, {}, None, placement_algorithm=placement_algorithm)
 
     # assert
     assert len(placements) == 1
@@ -332,7 +344,19 @@ def test_get_instance_placements_create_instance(
     assert shards_sorted[-1].end_layer == total_layers
 
 
-def test_get_instance_placements_one_node_exact_fit(
+@pytest.mark.parametrize(
+    "placement_algorithm",
+    [
+        (
+            PlacementAlgorithm.Cycle
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency
+        ),
+    ],
+)
+def test_get_instance_placements_snapshot_one_node_exact_fit(
+    placement_algorithm: PlacementAlgorithm,
     create_node: Callable[[int, NodeId | None], TopologyNode],
 ) -> None:
     topology = Topology()
@@ -346,7 +370,8 @@ def test_get_instance_placements_one_node_exact_fit(
             n_layers=10,
         ),
     )
-    placements = get_instance_placements(create_instance_command, topology, {})
+    topology_snapshot = TopologySnapshot(topology=topology)
+    placements = get_instance_placements(create_instance_command, topology_snapshot, {}, None, placement_algorithm)
 
     assert len(placements) == 1
     instance_id = list(placements.keys())[0]
@@ -357,7 +382,19 @@ def test_get_instance_placements_one_node_exact_fit(
     assert len(instance.shard_assignments.runner_to_shard) == 1
 
 
-def test_get_instance_placements_one_node_fits_with_extra_memory(
+@pytest.mark.parametrize(
+    "placement_algorithm",
+    [
+        (
+            PlacementAlgorithm.Cycle
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency
+        ),
+    ],
+)
+def test_get_instance_placements_snapshot_one_node_fits_with_extra_memory(
+    placement_algorithm: PlacementAlgorithm,
     create_node: Callable[[int, NodeId | None], TopologyNode],
 ) -> None:
     topology = Topology()
@@ -371,7 +408,8 @@ def test_get_instance_placements_one_node_fits_with_extra_memory(
             n_layers=10,
         ),
     )
-    placements = get_instance_placements(create_instance_command, topology, {})
+    topology_snapshot = TopologySnapshot(topology=topology)
+    placements = get_instance_placements(create_instance_command, topology_snapshot, {}, None, placement_algorithm)
 
     assert len(placements) == 1
     instance_id = list(placements.keys())[0]
@@ -382,7 +420,19 @@ def test_get_instance_placements_one_node_fits_with_extra_memory(
     assert len(instance.shard_assignments.runner_to_shard) == 1
 
 
+@pytest.mark.parametrize(
+    "placement_algorithm",
+    [
+        (
+            PlacementAlgorithm.Cycle
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency
+        ),
+    ],
+)
 def test_get_instance_placements_one_node_not_fit(
+    placement_algorithm: PlacementAlgorithm,
     create_node: Callable[[int, NodeId | None], TopologyNode],
 ) -> None:
     topology = Topology()
@@ -396,10 +446,9 @@ def test_get_instance_placements_one_node_not_fit(
             n_layers=10,
         ),
     )
-
+    topology_snapshot = TopologySnapshot(topology=topology)
     with pytest.raises(ValueError, match="No cycles found with sufficient memory"):
-        _ = get_instance_placements(create_instance_command, topology, {})
-
+        _ = get_instance_placements(create_instance_command, topology_snapshot, {}, None, placement_algorithm)
 
 def test_get_transition_events_no_change(instance: Instance):
     # arrange
@@ -486,21 +535,3 @@ def test_get_transition_events_deactivate_instance(
     assert isinstance(events[1], InstanceReplacedAtomically)
     assert events[0].instance_id == instance_id
     assert events[1].instance_id == instance_id
-
-# def test_get_transition_events_atomically_replaced_instance(instance1: Instance, instance2: Instance):
-#      # arrange
-#     instance_id = InstanceId()
-#     instance1.instance_id = instance_id
-#     instance2.instance_id = instance_id
-#     instance1.instance_active = True
-#     instance2.instance_active = False
-#     current_instances: dict[InstanceId, Instance] = {instance_id: instance1}
-#     target_instances: dict[InstanceId, Instance] = {instance_id: instance2}
-
-#     # act
-#     events = get_transition_events(current_instances, target_instances)
-
-#     # assert
-#     assert len(events) == 1
-#     assert isinstance(events[0], InstanceActivated)
-#     assert events[0].instance_id == instance_id
