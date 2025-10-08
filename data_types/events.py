@@ -62,6 +62,10 @@ class InstanceDeleted(BaseEvent):
 
 
 @dataclass
+class InstanceReplacedAtomically(BaseEvent):
+    instance_id: InstanceId
+
+@dataclass
 class NodePerformanceMeasured(BaseEvent):
     node_id: NodeId
     node_profile: NodePerformanceProfile

@@ -8,6 +8,9 @@ from ..data_types.common import NodeId, ModelId
 from ..data_types.events import (
     InstanceCreated,
     InstanceDeleted,
+    InstanceActivated,
+    InstanceDeactivated,
+    InstanceReplacedAtomically
 )
 from ..data_types.shards import CreateInstanceCommand
 from ..data_types.shards import ModelMetadata, ShardMetadata
@@ -15,10 +18,12 @@ from ..data_types.topology import Connection, TopologyNode
 from ..data_types.common import InstanceId
 from ..data_types.events import Instance
 from ..data_types.shards import ShardAssignments
+import logging
 
 
 @pytest.fixture
 def topology() -> Topology:
+    print("Topology")
     return Topology()
 
 
@@ -33,9 +38,23 @@ def instance() -> Instance:
         hosts=[],
     )
 
+@pytest.fixture
+def create_instances():
+    def create_instances_in(n: int):
+        return [Instance(
+            instance_id=InstanceId(),
+            instance_active=True,
+            shard_assignments=ShardAssignments(
+                model_id=ModelId("test-model"), runner_to_shard={}, node_to_runner={}
+            ),
+            hosts=[],
+        ) for _ in range(n)]
+    return create_instances_in
+
 
 @pytest.fixture
 def model_meta() -> ModelMetadata:
+    print("Model meta")
     return ModelMetadata(
         model_id=ModelId("test-model"),
         storage_size_kilobytes=1000,
@@ -78,9 +97,11 @@ def test_get_instance_placements_with_multiple_models(
     # arrange
 
     node_ids = [NodeId(str(i + 1)) for i in range(len(total_mem_kb))]
+    logging.info(node_ids)
     nodes = create_nodes_comprehensive(
         node_ids, total_mem_kb, total_mem_kb, mem_bandwidth_kbps
     )
+    print(nodes)
     node_dict = {node.node_id: node for node in nodes}
 
     for node in nodes:
@@ -120,9 +141,11 @@ def test_get_instance_placements_with_multiple_models(
                 shard_mem_kb = round(
                     (shard.end_layer - shard.start_layer) / n_layers * model_mem_kb
                 )
+                print("NODE", node_id, node_dict[node_id].node_profile.memory.ram_available)
                 node_dict[node_id].node_profile.memory.ram_available -= (
                     shard_mem_kb * 1024
                 )
+                print("NODE", node_id, node_dict[node_id].node_profile.memory.ram_available)
                 shards.append(shard)
             else:
                 shards.append(None)
@@ -418,3 +441,66 @@ def test_get_transition_events_delete_instance(instance: Instance):
     assert len(events) == 1
     assert isinstance(events[0], InstanceDeleted)
     assert events[0].instance_id == instance_id
+
+
+def test_get_transition_events_activate_instance(
+        create_instances: Callable[[int], list[Instance]]):
+    # arrange
+    instance_id = InstanceId()
+    instances = create_instances(2)
+    instances[0].instance_id = instance_id
+    instances[1].instance_id = instance_id
+    instances[0].instance_active = False
+    instances[1].instance_active = True
+    current_instances: dict[InstanceId, Instance] = {instance_id: instances[0]}
+    target_instances: dict[InstanceId, Instance] = {instance_id: instances[1]}
+
+    # act
+    events = get_transition_events(current_instances, target_instances)
+
+    # assert
+    assert len(events) == 2
+    assert isinstance(events[0], InstanceActivated)
+    assert isinstance(events[1], InstanceReplacedAtomically)
+    assert events[0].instance_id == instance_id
+    assert events[1].instance_id == instance_id
+
+def test_get_transition_events_deactivate_instance(
+   create_instances: Callable[[int], list[Instance]]):
+    # arrange
+    instance_id = InstanceId()
+    instances = create_instances(2)
+    instances[0].instance_id = instance_id
+    instances[1].instance_id = instance_id
+    instances[0].instance_active = True
+    instances[1].instance_active = False
+    current_instances: dict[InstanceId, Instance] = {instance_id: instances[0]}
+    target_instances: dict[InstanceId, Instance] = {instance_id: instances[1]}
+
+    # act
+    events = get_transition_events(current_instances, target_instances)
+
+    # assert
+    assert len(events) == 2
+    assert isinstance(events[0], InstanceDeactivated)
+    assert isinstance(events[1], InstanceReplacedAtomically)
+    assert events[0].instance_id == instance_id
+    assert events[1].instance_id == instance_id
+
+# def test_get_transition_events_atomically_replaced_instance(instance1: Instance, instance2: Instance):
+#      # arrange
+#     instance_id = InstanceId()
+#     instance1.instance_id = instance_id
+#     instance2.instance_id = instance_id
+#     instance1.instance_active = True
+#     instance2.instance_active = False
+#     current_instances: dict[InstanceId, Instance] = {instance_id: instance1}
+#     target_instances: dict[InstanceId, Instance] = {instance_id: instance2}
+
+#     # act
+#     events = get_transition_events(current_instances, target_instances)
+
+#     # assert
+#     assert len(events) == 1
+#     assert isinstance(events[0], InstanceActivated)
+#     assert events[0].instance_id == instance_id
