@@ -33,8 +33,8 @@ In other words, for each model and shard, there is one runner on a node.
 If there are multiple cycles to choose, first one with the smallest number of nodes,
 than we choose the one with the largest amount of
 available memory.
-Runner generally is a thread that runs a task?
-Instances are just a wrapper of shard asignements (mapping between shards and nodes)
+Runner generally is a thread that runs a task.
+Instances are just a wrapper of shard assignments (mapping between shards and nodes)
  and hosts
 """
 def get_instance_placements_cycle(
@@ -52,7 +52,6 @@ def get_instance_placements_cycle(
     all_nodes = topology.list_nodes()
     cycles = topology.get_cycles()
     # we can also always just have a node on its own
-    # Why do we need to have cycles? In other words why do we need to have all connections?
     singleton_cycles = [[node] for node in all_nodes]
     candidate_cycles = cycles + singleton_cycles
 
@@ -63,7 +62,7 @@ def get_instance_placements_cycle(
     smallest_cycles = get_smallest_cycles(cycles_with_sufficient_memory)
     selected_cycle = max(smallest_cycles, key=lambda cycle: sum(node.node_profile.memory.ram_available for node in cycle))
 
-    # We need to determine the sharding of layers to nodes using proportional ratio?
+    # We need to determine the sharding of layers to nodes using proportional ratio
     shard_assignments = get_shard_assignments(command.model_meta, selected_cycle)
 
     cycle_digraph: Topology = topology.get_subgraph_from_nodes(selected_cycle)
@@ -96,7 +95,6 @@ def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
         if connection is None:
             logging.debug(f"CONNECTION {prev_node_path.node_id} {node_path.node_id}")
             return None
-        # bandwidth
         path_latency += int(connection.connection_profile.latency)
         # We assume the data is moved from a node to a node as a whole,
         #  and is not forwarded further until the whole data is moved.
@@ -107,6 +105,50 @@ def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
 
     return path_latency
 
+def get_latency_of_traversal(all_nodes_perm: list[TopologyNode],
+        shortest_paths: dict[NodeId, dict[NodeId, list[TopologyNode]]],
+        command: CreateInstanceCommand, topology_snapshot: TopologySnapshot,
+        data_to_move_size: int):
+    prev_node = None
+    model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
+    data_to_move_size = ceil(model_size_to_store / command.model_meta.n_layers)
+    node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
+    cur_perm = None
+    cur_perm = all_nodes_perm
+    path_trav_latency = 0
+    for idx, node in enumerate(all_nodes_perm):
+        if model_size_to_store == 0:
+            cur_perm = all_nodes_perm[:idx]
+            break
+
+        memory_used = min(node_available_memory[node.node_id], model_size_to_store)
+        node_available_memory[node.node_id] -= memory_used
+        model_size_to_store -= memory_used
+        # Here we check by what the node is bounded: compute or memory.
+        # It should also be noted when we have multiple tasks evaluated on the same node
+        # we would need to account for the dependency of one task on another and the whole computation model should be changed: either add additional dependencies or account for
+        # sharing of bandwidth and compute.
+        # The dependency evaluation would require the whole model to be changed by accounting
+        # how long certain parts take time and at which stages those parts are active cpu/bandwidth
+        # network.
+        # If we assume consistent flow of bandwidth and compute (all the time model effectively uses bandwidth/cpu and network), we would need to proportionally to account for latency
+        # of all the running models.
+        flops_latency = int(memory_used / 2 / node.node_profile.system.flops_fp16)
+        memory_ready_latency=  int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
+        comp_latency = max(flops_latency, memory_ready_latency)
+        path_trav_latency += comp_latency
+        if prev_node is not None:
+            path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
+                                                data_to_move_size=float(data_to_move_size))
+            if path_latency is None:
+                return (None, None)
+            else:
+                path_trav_latency += path_latency
+        prev_node = node
+    if model_size_to_store > 0:
+        return (None, None)
+
+    return cur_perm, path_trav_latency
 """
 GOAL: minimize the total latency from the start to the finish of the neural network inference over
 multiple nodes N_1, N_2, ..., N_n each with the memory M_1, M_2, ..., M_n, that are connected with network links of bandwidth B_{i, j} each with the latency L_{i, j}.
@@ -164,52 +206,18 @@ def get_instance_placements_snapshot(
     logging.basicConfig(level=logging.DEBUG)
     logging.debug(f"SHORTEST PATHS: {shortest_paths}")
     for all_nodes_perm in all_perms:
-        prev_node = None
         total_latency = 0
         model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
         data_to_move_size = ceil(model_size_to_store / command.model_meta.n_layers)
-        node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
-        there_is_path = True
-        cur_perm = all_nodes_perm
+        cur_perm, total_latency = get_latency_of_traversal(all_nodes_perm, shortest_paths, command, topology_snapshot, data_to_move_size)
 
-        for idx, node in enumerate(all_nodes_perm):
-            if model_size_to_store == 0:
-                cur_perm = all_nodes_perm[:idx]
-                break
-
-            memory_used = min(node_available_memory[node.node_id], model_size_to_store)
-            logging.debug(f"MEMORY USED{memory_used} f{node_available_memory[node.node_id]} {model_size_to_store}")
-            node_available_memory[node.node_id] -= memory_used
-            model_size_to_store -= memory_used
-            # Here we check by what the node is bounded: compute or memory.
-            # It should also be noted when we have multiple tasks evaluated on the same node
-            # we would need to account for the dependency of one task on another and the whole computation model should be changed: either add additional dependencies or account for
-            # sharing of bandwidth and compute.
-            # The dependency evaluation would require the whole model to be changed by accounting
-            # how long certain parts take time and at which stages those parts are active cpu/bandwidth
-            # network.
-            # If we assume consistent flow of bandwidth and compute (all the time model effectively uses bandwidth/cpu and network), we would need to proportionally to account for latency
-            # of all the running models.
-            flops_latency = int(memory_used / 2 / node.node_profile.system.flops_fp16)
-            memory_ready_latency=  int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
-            comp_latency = max(flops_latency, memory_ready_latency)
-            total_latency += comp_latency
-            if prev_node is not None:
-                path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
-                                                   data_to_move_size=float(data_to_move_size))
-                if path_latency is None:
-                    there_is_path = False
-                    break
-                else:
-                    total_latency += path_latency
-            prev_node = node
-
-        if model_size_to_store > 0:
-            raise ValueError("No cycles found with sufficient memory")
-
-        if there_is_path and (total_latency <= best_latency):
+        if cur_perm is not None and (total_latency <= best_latency):
             best_perm = cur_perm
             best_latency = total_latency
+
+    if len(best_perm) == 0:
+        raise ValueError("No cycles found with sufficient memory")
+
     logging.debug(f"BEST PERMUTATION {best_perm}")
     shard_assignments = get_shard_assignments(command.model_meta, best_perm, True)
 
