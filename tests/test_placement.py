@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 import pytest
 
@@ -179,19 +179,25 @@ def test_get_instance_placements_with_multiple_models(
 
 
 @pytest.mark.parametrize(
-"placement_algorithm, mem_bandwidth_kbps,total_mem_kb,available_mem_kb,model_mem_kb,total_layers,expected_layers",
+"placement_algorithm, repeat_nodes, connection_throughput, connection_latency, mem_bandwidth_kbps,total_mem_kb,available_mem_kb,model_mem_kb,total_layers,expected_layers",
     [
         (
             PlacementAlgorithm.Cycle,
-                (900_000_000, 800_000_000, 800_000_000, 800_000_000),
-                (512_000_000, 256_000_000, 256_000_000, 126_000_000),
-                (50_000_000, 100_000_000, 256_000_000, 126_000_000),
-                150_000_000,
-                150,
-                [0, 0, 150, 0],
+            1,
+            1000,
+            1000,
+            (900_000_000, 800_000_000, 800_000_000, 800_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
+            (50_000_000, 100_000_000, 256_000_000, 126_000_000),
+            150_000_000,
+            150,
+            [0, 0, 150, 0],
         ),
         (
             PlacementAlgorithm.Cycle,
+            1,
+            1000,
+            1000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             (50_000_000, 100_000_000, 256_000_000, 126_000_000),
@@ -201,6 +207,9 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.Cycle,
+            1,
+            1000,
+            1000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             (50_000_000, 206_000_000, 256_000_000, 126_000_000),
@@ -210,6 +219,9 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
+            1,
+            1000,
+            1000,
             (900_000_000, 800_000_000, 800_000_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             (50_000_000, 100_000_000, 256_000_000, 126_000_000),
@@ -219,6 +231,9 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
+            1,
+            1000,
+            10000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             (50_000_000, 100_000_000, 256_000_000, 126_000_000),
@@ -228,6 +243,33 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
+            1,
+            1000,
+            1000000000000,
+            (900_000_000, 800_000_000, 1_000, 800_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
+            (50_000_000, 100_000_000, 256_000_000, 126_000_000),
+            150_000_000,
+            150,
+            [0, 0, 150, 0],
+        ),
+         (
+            PlacementAlgorithm.MinimalLatency,
+            1,
+            0.001,
+            1000,
+            (900_000_000, 800_000_000, 1_000, 800_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
+            (50_000_000, 100_000_000, 256_000_000, 126_000_000),
+            150_000_000,
+            150,
+            [0, 0, 150, 0],
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency,
+            1,
+            1000,
+            1000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             (50_000_000, 206_000_000, 256_000_000, 126_000_000),
@@ -235,10 +277,14 @@ def test_get_instance_placements_with_multiple_models(
             150,
             [0, 150, 0, 0],
         ),
+
     ],
 )
 def test_get_instance_placements_create_instance_comprehensive(
     placement_algorithm: PlacementAlgorithm,
+    repeat_nodes: int,
+    connection_throughput: int,
+    connection_latency: int,
     mem_bandwidth_kbps: list[int],
     total_mem_kb: list[int],
     available_mem_kb: list[int],
@@ -250,7 +296,7 @@ def test_get_instance_placements_create_instance_comprehensive(
     create_nodes_comprehensive: Callable[
         [list[NodeId], list[int], list[int], list[int]], list[TopologyNode]
     ],
-    create_connection: Callable[[TopologyNode, TopologyNode], Connection],
+    create_connection: Callable[[TopologyNode, TopologyNode, Optional[int], Optional[float], Optional[float]], Connection],
 ):
     # arrange
     model_meta.n_layers = total_layers
@@ -259,6 +305,10 @@ def test_get_instance_placements_create_instance_comprehensive(
     create_instance_command = CreateInstanceCommand(
         model_meta=model_meta,
     )
+    expected_layers = expected_layers * repeat_nodes
+    available_mem_kb = available_mem_kb * repeat_nodes
+    total_mem_kb = total_mem_kb * repeat_nodes
+    mem_bandwidth_kbps = mem_bandwidth_kbps * repeat_nodes
 
     node_ids = [NodeId(str(i + 1)) for i in range(len(expected_layers))]
     nodes = create_nodes_comprehensive(
@@ -271,7 +321,7 @@ def test_get_instance_placements_create_instance_comprehensive(
     for node_1 in nodes:
         for node_2 in nodes:
             if node_1 != node_2:
-                topology.add_connection(create_connection(node_1, node_2))
+                topology.add_connection(create_connection(node_1, node_2, None, connection_throughput, connection_latency))
 
     # act
     topology_snapshot = TopologySnapshot(topology)
@@ -321,7 +371,7 @@ def test_get_instance_placements_create_instance_comprehensive(
         )
     ],
 )
-def test_get_instance_placements_create_instance1(
+def test_get_instance_placements_create_instance(
     placement_algorithm: PlacementAlgorithm,
     available_memory: tuple[int, int, int],
     total_layers: int,
@@ -329,7 +379,7 @@ def test_get_instance_placements_create_instance1(
     topology: Topology,
     model_meta: ModelMetadata,
     create_node: Callable[[int, NodeId | None], TopologyNode],
-    create_connection: Callable[[TopologyNode, TopologyNode], Connection],
+    create_connection: Callable[[TopologyNode, TopologyNode, Optional[int], Optional[float], Optional[float]], Connection],
 ):
     # arrange
     model_meta.n_layers = total_layers

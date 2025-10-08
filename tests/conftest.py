@@ -77,11 +77,12 @@ def create_node():
 
 
 @pytest.fixture
-def create_connection():
+def create_connection(throughput: float = 1000, latency: float= 1000):
     port_counter = 1235
 
     def _create_connection(
-        source_node: TopologyNode, sink_node: TopologyNode, send_back_port: int | None = None
+        source_node: TopologyNode, sink_node: TopologyNode, send_back_port: int | None = None,
+        throughput: float = throughput, latency: float = latency
     ) -> Connection:
         nonlocal port_counter
         if send_back_port is None:
@@ -94,7 +95,7 @@ def create_connection():
                 f"/ip4/127.0.0.1/tcp/{send_back_port}"
             ),
             connection_profile=ConnectionProfile(
-                throughput=1000, latency=1000, jitter=1000
+                throughput=throughput, latency=latency, jitter=1000
             ),
         )
 
