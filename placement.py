@@ -226,22 +226,6 @@ def get_instance_placements_snapshot(
     return target_instances
 
 
-
-"""
-Find the cycle with the smallest amount of memory that can store the whole command. model.
-Then, for each of the nodes belonging to cycle proportionally assign number of layers in the model as
-much as this node contributes to the total amount of memory.
-These layers combined on node node represent shard.
-Each shard is run using one runner.
-In other words, for each model and shard, there is one runner on a node.
-
-If there are multiple cycles to choose, first one with the smallest number of nodes,
-than we choose the one with the largest amount of
-available memory.
-Runner generally is a thread that runs a task?
-Instances are just a wrapper of shard asignements (mapping between shards and nodes)
- and hosts
-"""
 def get_instance_placements(
     command: CreateInstanceCommand,
     topology_snapshot: TopologySnapshot,

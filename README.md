@@ -37,3 +37,6 @@ You will:
 
 - There is already a basic implementation in [placement.py](/placement.py). You should start by understanding what it does and what its limitations are. You can run the tests in [test_placement.py](/tests/test_placement.py).
 - The tests are intentionally very simple, and you will have to update them as you change the behaviour of these functions, don't take them as gospel.
+
+# Solution:
+[Solution text](SOLUTION.MD)

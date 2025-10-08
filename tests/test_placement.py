@@ -178,43 +178,6 @@ def test_get_instance_placements_with_multiple_models(
         assert shards_sorted[-1].end_layer == n_layers
 
 
-# NOTE: The current placer is intentionally simple for the take home - update the tests as you update placement!
-# @pytest.mark.parametrize(
-#     "placement_algorithm, mem_bandwidth_kbps,total_mem_kb,available_mem_kb,model_mem_kb,total_layers,expected_layers",
-#     [
-#         (algo, *case)
-#         for algo, case in itertools.product(
-#             [PlacementAlgorithm.Cycle, PlacementAlgorithm.MinimalLatency],
-#             [
-#                 (
-#                     (900_000_000, 800_000_000, 800_000_000, 800_000_000),
-#                     (512_000_000, 256_000_000, 256_000_000, 126_000_000),
-#                     (50_000_000, 100_000_000, 256_000_000, 126_000_000),
-#                     150_000_000,
-#                     150,
-#                     [0, 0, 150, 0],
-#                 ),
-#                 (
-#                     (900_000_000, 800_000_000, 1_000, 800_000_000),
-#                     (512_000_000, 256_000_000, 256_000_000, 126_000_000),
-#                     (50_000_000, 100_000_000, 256_000_000, 126_000_000),
-#                     150_000_000,
-#                     150,
-#                     [0, 0, 150, 0],
-#                 ),
-#                 (
-#                     (900_000_000, 800_000_000, 1_000, 800_000_000),
-#                     (512_000_000, 256_000_000, 256_000_000, 126_000_000),
-#                     (50_000_000, 206_000_000, 256_000_000, 126_000_000),
-#                     150_000_000,
-#                     150,
-#                     [0, 0, 150, 0],
-#                 ),
-#             ]
-#         )
-#     ],
-# )
-
 @pytest.mark.parametrize(
 "placement_algorithm, mem_bandwidth_kbps,total_mem_kb,available_mem_kb,model_mem_kb,total_layers,expected_layers",
     [
