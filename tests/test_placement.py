@@ -71,10 +71,11 @@ def create_instance_command(model_meta: ModelMetadata) -> CreateInstanceCommand:
 
 # NOTE: The current placer is intentionally simple for the take home - update the tests as you update placement!
 @pytest.mark.parametrize(
-    "placement_algorithm,mem_bandwidth_kbps,total_mem_kb,models",
+    "placement_algorithm,num_repeats,mem_bandwidth_kbps,total_mem_kb,models",
     [
         (
             PlacementAlgorithm.Cycle,
+            1,
             (900_000_000, 800_000_000, 100_000_000, 800_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             [
@@ -85,6 +86,7 @@ def create_instance_command(model_meta: ModelMetadata) -> CreateInstanceCommand:
         ),
         (
             PlacementAlgorithm.MinimalLatency,
+            1,
             (100_000_000, 800_000_000, 700_000_000, 900_000_000),
             (512_000_000, 256_000_000, 256_000_000, 126_000_000),
             [
@@ -93,10 +95,25 @@ def create_instance_command(model_meta: ModelMetadata) -> CreateInstanceCommand:
                 (150_000_000, 150, [0, 24, 0, 126]),
             ],
         ),
+        (
+            PlacementAlgorithm.MinimalLatency,
+            1,
+            (100_000_000, 800_000_000, 700_000_000, 900_000_000, 100_000_000, 800_000_000, 700_000_000, 900_000_000, 100_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000, 512_000_000, 256_000_000, 256_000_000, 126_000_000, 100_000_000),
+            [
+                (150_000_000, 150, [0, 0, 0, 0, 0, 150, 0, 0, 0]),
+                (150_000_000, 150, [0, 150, 0, 0, 0, 0, 0, 0, 0]),
+                (150_000_000, 150, [0, 0, 0, 0, 0, 0, 150, 0, 0]),
+                (150_000_000, 150, [0, 0, 150, 0, 0, 0, 0, 0, 0]),
+                (150_000_000, 150, [0, 0, 0, 24, 0, 0, 0, 126, 0]),
+                (150_000_000, 150, [0, 0, 0, 102, 0, 48, 0, 0, 0]),
+            ],
+        ),
     ],
 )
 def test_get_instance_placements_with_multiple_models(
     placement_algorithm: PlacementAlgorithm,
+    num_repeats: int,
     mem_bandwidth_kbps: list[int],
     total_mem_kb: list[int],
     models: list[tuple[int, int, list[int]]],
@@ -108,8 +125,10 @@ def test_get_instance_placements_with_multiple_models(
 ):
     # arrange
 
+    total_mem_kb = total_mem_kb * num_repeats
+    mem_bandwidth_kbps = mem_bandwidth_kbps * num_repeats
     node_ids = [NodeId(str(i + 1)) for i in range(len(total_mem_kb))]
-    logging.info(node_ids)
+    logging.debug(node_ids)
     nodes = create_nodes_comprehensive(
         node_ids, total_mem_kb, total_mem_kb, mem_bandwidth_kbps
     )
@@ -219,7 +238,7 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
-            1,
+            2,
             1000,
             1000,
             (900_000_000, 800_000_000, 800_000_000, 800_000_000),
@@ -231,7 +250,7 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
-            1,
+            2,
             1000,
             10000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
@@ -243,7 +262,7 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
-            1,
+            2,
             1000,
             1000000000000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
@@ -255,7 +274,7 @@ def test_get_instance_placements_with_multiple_models(
         ),
          (
             PlacementAlgorithm.MinimalLatency,
-            1,
+            2,
             0.001,
             1000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
@@ -267,7 +286,7 @@ def test_get_instance_placements_with_multiple_models(
         ),
         (
             PlacementAlgorithm.MinimalLatency,
-            1,
+            2,
             1000,
             1000,
             (900_000_000, 800_000_000, 1_000, 800_000_000),
@@ -276,6 +295,30 @@ def test_get_instance_placements_with_multiple_models(
             150_000_000,
             150,
             [0, 150, 0, 0],
+        ),
+        (
+            PlacementAlgorithm.MinimalLatency,
+            2,
+            1000,
+            1000,
+            (900_000_000, 800_000_000, 1_000, 800_000_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000),
+            (50_000_000, 206_000_000, 256_000_000, 126_000_000),
+            150_000_000,
+            150,
+            [0, 150, 0, 0],
+        ),
+         (
+            PlacementAlgorithm.MinimalLatency,
+            1,
+            1000,
+            1000,
+            (900_000_000, 800_000_000, 1_000, 800_000_000, 900_000_000, 800_000_000, 1_000, 800_000_000, 1_000, 1_000),
+            (512_000_000, 256_000_000, 256_000_000, 126_000_000, 512_000_000, 256_000_000, 256_000_000, 126_000_000, 1_000, 1_000),
+            (50_000_000, 206_000_000, 256_000_000, 126_000_000, 50_000_000, 206_000_000, 256_000_000, 126_000_000, 1_000, 1_000),
+            150_000_000,
+            150,
+            [0, 0, 0, 0, 0, 150, 0, 0, 0, 0],
         ),
 
     ],
@@ -305,7 +348,8 @@ def test_get_instance_placements_create_instance_comprehensive(
     create_instance_command = CreateInstanceCommand(
         model_meta=model_meta,
     )
-    expected_layers = expected_layers * repeat_nodes
+    expected_layers = [0] * len(expected_layers) * (repeat_nodes - 1) + expected_layers
+
     available_mem_kb = available_mem_kb * repeat_nodes
     total_mem_kb = total_mem_kb * repeat_nodes
     mem_bandwidth_kbps = mem_bandwidth_kbps * repeat_nodes

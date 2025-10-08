@@ -10,3 +10,6 @@ It should be noted that this model can be extended by accounting for timings of 
 Future work: several heuristics can be implemented to speed up the search.
 
 The UTs have been extended to support this novel algorithm.
+
+To install all required python libraries and run tests just use:
+source install.sh
