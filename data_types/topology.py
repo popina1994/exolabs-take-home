@@ -90,7 +90,9 @@ class Topology:
         self._graph.update_edge_by_index(rx_idx, connection)
 
     def get_connection(self, nodeId1: NodeId, nodeId2: NodeId):
-        return self._edge_to_edge_id[(nodeId1, nodeId2)]
+        if (nodeId1, nodeId2) in self._edge_to_edge_id:
+            return self._edge_to_edge_id[(nodeId1, nodeId2)]
+        return None
 
     def get_connection_profile(
         self, connection: Connection
@@ -140,7 +142,7 @@ class Topology:
 
     def get_shortest_paths(self) -> dict[NodeId, dict[NodeId, list[TopologyNode]]]:
         rx_shortest_paths: rx.AllPairsPathLengthMapping = \
-            rx.all_pairs_dijkstra_shortest_paths(self._graph, edge_cost_fn=lambda e: e)
+            rx.all_pairs_dijkstra_shortest_paths(self._graph, edge_cost_fn=lambda e: e.connection_profile.latency)
 
         shortest_paths_dict: dict[NodeId, dict[NodeId, list[TopologyNode]]] = {}
         for rx_source_node, rx_target_node_paths in rx_shortest_paths.items():
@@ -148,7 +150,7 @@ class Topology:
             target_node_paths = {}
             for rx_target_node, rx_path in rx_target_node_paths.items():
                 path = [self._graph.get_node_data(rx_node) for rx_node in rx_path]
-                target_node_paths[self._rx_id_to_node_id_map[rx_node]] = path
+                target_node_paths[self._rx_id_to_node_id_map[rx_target_node]] = path
             shortest_paths_dict[source_node] = target_node_paths
 
 

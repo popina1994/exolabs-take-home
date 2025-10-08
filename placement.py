@@ -79,6 +79,32 @@ def get_instance_placements_cycle(
 
 
 
+def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
+                        shortest_paths: dict[NodeId, dict[NodeId, list[TopologyNode]]],
+                        topology: Topology, data_to_move_size: int) -> int | None:
+    prev_node_path: TopologyNode | None = None
+    path_latency: int = 0
+
+    for node_path in shortest_paths[prev_node.node_id][node.node_id]:
+        if prev_node_path is None:
+            prev_node_path = node_path
+            continue
+        # extract connection
+        connection: Connection | None = topology.get_connection(
+            prev_node_path.node_id, node_path.node_id)
+        if connection is None:
+            print("CONNECTION", prev_node_path.node_id, node_path.node_id)
+            return None
+        # bandwidth
+        path_latency += connection.connection_profile.latency
+        # We assume the data is moved from a node to a node as a whole,
+        #  and is not forwarded further until the whole data is moved.
+        # If the data can be moved from a node to a node as a stream, then
+        # the total_latency is increased only once
+        path_latency += data_to_move_size / connection.connection_profile.throughput
+        prev_node_path = node_path
+
+    return path_latency
 
 """
 GOAL: minimize the total latency from the start to the finish of the neural network inference over
@@ -131,56 +157,50 @@ def get_instance_placements_snapshot(
     shortest_paths = topology_snapshot.topology.get_shortest_paths()
     best_perm: list[TopologyNode] = []
     best_latency: int = sys.maxsize
-    model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
 
     all_perms = [list(perm) for perm in permutations(all_nodes)]
 
-    # TODO: ceil division?
-    data_to_move_size = model_size_to_store / command.model_meta.n_layers
-    #TODO: what if no memory to store model? Sit and cry :)
-
     logging.basicConfig(level=logging.DEBUG)
-    logging.debug(f"DATA TO MOVE: {model_size_to_store}")
-    logging.debug(f"DATA TO MOVE: {data_to_move_size}")
     logging.debug(f"SHORTEST PATHS: {shortest_paths}")
-    logging.debug(f"PERMUTATIONS: {all_perms}")
+    # logging.debug(f"PERMUTATIONS: {all_perms}")
     for all_nodes_perm in all_perms:
         prev_node = None
         total_latency = 0
-        # nodes memory used initialize copies
+        model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
+        # TODO: ceil division?
+        data_to_move_size = model_size_to_store / command.model_meta.n_layers
         node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
-        for node in all_nodes_perm:
+        there_is_path = True
+
+        for idx, node in enumerate(all_nodes_perm):
+            print("IDX", idx, node.node_id, command.model_meta.storage_size_kilobytes )
             if model_size_to_store == 0:
                 break
+
             memory_used = min(node_available_memory[node.node_id], model_size_to_store)
+            logging.debug(f"MEMORY USED{memory_used} f{node_available_memory[node.node_id]} {model_size_to_store}")
             node_available_memory[node.node_id] -= memory_used
             model_size_to_store -= memory_used
             #TODO: Add different compute models costs?
             #TODO: Model different layers of computation
             # TODO: add latency when the bandwidth is occupied?
-            comp_latency = memory_used / node.node_profile.system.flops_fp16
+            comp_latency = int(memory_used / node.node_profile.system.flops_fp16)
             total_latency += comp_latency
             if prev_node is not None:
-                prev_node_path = prev_node
-                for node_path in shortest_paths[prev_node.node_id][node.node_id]:
-                    # extract connection
-                    connection: Connection = topology_snapshot.topology.get_connection(
-                        prev_node_path.node_id, node_path.node_id)
-                    # bandwidth
-                    total_latency += connection.connection_profile.latency
-                    # We assume the data is moved from a node to a node as a whole,
-                    #  and is not forwarded further until the whole data is moved.
-                    # If the data can be moved from a node to a node as a stream, then
-                    # the total_latency is increased only once
-                    total_latency += data_to_move_size / connection.connection_profile.throughput
-                    prev_node_path = node_path
-
+                path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
+                                                   data_to_move_size=data_to_move_size)
+                if path_latency is None:
+                    there_is_path = False
+                    print("NO PATH")
+                    break
+                else:
+                    total_latency += path_latency
             prev_node = node
 
         if model_size_to_store > 0:
             raise ValueError("No cycles found with sufficient memory")
 
-        if total_latency <= best_latency:
+        if there_is_path and (total_latency <= best_latency):
             best_perm = all_nodes_perm
             best_latency = total_latency
 
