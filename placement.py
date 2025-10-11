@@ -95,12 +95,12 @@ def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
         if connection is None:
             logging.debug(f"CONNECTION {prev_node_path.node_id} {node_path.node_id}")
             return None
-        path_latency += int(connection.connection_profile.latency)
+        path_latency += connection.connection_profile.latency
         # We assume the data is moved from a node to a node as a whole,
         #  and is not forwarded further until the whole data is moved.
         # If the data can be moved from a node to a node as a stream, then
         # the total_latency is increased only once
-        path_latency += int(data_to_move_size / connection.connection_profile.throughput)
+        path_latency += data_to_move_size / connection.connection_profile.throughput
         prev_node_path = node_path
 
     return path_latency
@@ -133,10 +133,11 @@ def get_latency_of_traversal(all_nodes_perm: list[TopologyNode],
         # network.
         # If we assume consistent flow of bandwidth and compute (all the time model effectively uses bandwidth/cpu and network), we would need to proportionally to account for latency
         # of all the running models.
-        flops_latency = int(memory_used / 2 / node.node_profile.system.flops_fp16)
-        memory_ready_latency=  int(memory_used / node.node_profile.system.mem_bandwidth_kbps * 1024)
+        flops_latency = memory_used / 2 / node.node_profile.system.flops_fp16
+        memory_ready_latency=  memory_used / (node.node_profile.system.mem_bandwidth_kbps * 1024)
         comp_latency = max(flops_latency, memory_ready_latency)
         path_trav_latency += comp_latency
+        logging.debug(f"Compute latency {comp_latency}")
         if prev_node is not None:
             path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
                                                 data_to_move_size=float(data_to_move_size))
@@ -202,9 +203,6 @@ def get_instance_placements_snapshot(
     best_latency: int = sys.maxsize
 
     all_perms = [list(perm) for perm in permutations(all_nodes)]
-
-    logging.basicConfig(level=logging.DEBUG)
-    logging.debug(f"SHORTEST PATHS: {shortest_paths}")
     for all_nodes_perm in all_perms:
         total_latency = 0
         model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
