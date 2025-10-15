@@ -81,6 +81,7 @@ Event = (
     | InstanceActivated
     | InstanceDeactivated
     | InstanceDeleted
+    | InstanceReplacedAtomically
     | NodePerformanceMeasured
     | WorkerStatusUpdated
 )

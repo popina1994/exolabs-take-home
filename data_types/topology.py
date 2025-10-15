@@ -141,7 +141,10 @@ class Topology:
         return topology
 
     def get_shortest_paths(self) -> dict[NodeId, dict[NodeId, list[TopologyNode]]]:
-        rx_shortest_paths: rx.AllPairsPathLengthMapping = \
+        """
+        Returns a dictionary of mapping: source node->
+        {target_node->list of nodes on the shortest path to the target node}"""
+        rx_shortest_paths: rx.AllPairsPathMapping = \
             rx.all_pairs_dijkstra_shortest_paths(self._graph, edge_cost_fn=lambda e: e.connection_profile.latency)
 
         shortest_paths_dict: dict[NodeId, dict[NodeId, list[TopologyNode]]] = {}

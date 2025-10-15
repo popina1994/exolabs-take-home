@@ -8,7 +8,6 @@ from copy import deepcopy
 from itertools import permutations
 from enum import Enum
 from math import ceil
-import logging
 import sys
 
 from .placement_utils import (
@@ -21,6 +20,19 @@ from .placement_utils import (
 class PlacementAlgorithm(Enum):
     Cycle = 1
     MinimalLatency = 2
+
+class Conversion:
+    KbHasBytes = 1024
+
+def convert_kb_to_bytes(mem_kb: int)->int:
+    return Conversion.KbHasBytes * mem_kb
+
+def convert_bytes_to_words(mem_bytes: int)->int:
+    return mem_bytes // 2
+
+def compute_data_latency(data_size: int, data_throughput: float)->float:
+    return data_size / data_throughput
+
 
 """
 Find the cycle with the smallest amount of memory that can store the whole command. model.
@@ -40,14 +52,7 @@ Instances are just a wrapper of shard assignments (mapping between shards and no
 def get_instance_placements_cycle(
     command: CreateInstanceCommand,
     topology: Topology,
-    current_instances: dict[InstanceId, Instance],
-    instance_id: InstanceId | None = None,
-) -> dict[InstanceId, Instance]:
-    if instance_id is None:
-        instance_id = InstanceId()
-    available_models = [current_instances[instance].shard_assignments.model_id for instance in current_instances]
-    if command.model_meta.model_id in available_models:
-        raise ValueError(f"Instance for {command.model_meta.model_id} already exists")
+) -> list[TopologyNode]:
 
     all_nodes = topology.list_nodes()
     cycles = topology.get_cycles()
@@ -55,72 +60,57 @@ def get_instance_placements_cycle(
     singleton_cycles = [[node] for node in all_nodes]
     candidate_cycles = cycles + singleton_cycles
 
-    cycles_with_sufficient_memory = filter_cycles_by_memory(candidate_cycles, command.model_meta.storage_size_kilobytes * 1024)
+    cycles_with_sufficient_memory = filter_cycles_by_memory(candidate_cycles, convert_kb_to_bytes(command.model_meta.storage_size_kilobytes))
     if not cycles_with_sufficient_memory:
         raise ValueError("No cycles found with sufficient memory")
 
     smallest_cycles = get_smallest_cycles(cycles_with_sufficient_memory)
     selected_cycle = max(smallest_cycles, key=lambda cycle: sum(node.node_profile.memory.ram_available for node in cycle))
 
-    # We need to determine the sharding of layers to nodes using proportional ratio
-    shard_assignments = get_shard_assignments(command.model_meta, selected_cycle)
-
-    cycle_digraph: Topology = topology.get_subgraph_from_nodes(selected_cycle)
-    hosts: list[Host] = get_hosts_from_subgraph(cycle_digraph)
-
-    target_instances = deepcopy(current_instances)
-    target_instances[instance_id] = Instance(
-        instance_id=instance_id,
-        instance_active=True,
-        shard_assignments=shard_assignments,
-        hosts=hosts
-    )
-    return target_instances
-
+    return selected_cycle
 
 
 def get_latency_on_path(prev_node: TopologyNode, node: TopologyNode,
                         shortest_paths: dict[NodeId, dict[NodeId, list[TopologyNode]]],
-                        topology: Topology, data_to_move_size: int) -> int | None:
-    prev_node_path: TopologyNode | None = None
-    path_latency: int = 0
+                        topology: Topology, data_to_move_size: int) -> float | None:
+    prev_node_on_path: TopologyNode | None = None
+    """
+    Finds a latency of the data travel from prev_node to node through the topology topology.
+    We assume the data is moved from a node to a node as a whole,
+    and is not forwarded further until the whole data is moved.
+    If the data can be moved from a node to a node as a stream, then
+    the total_latency is increased only once.
+    In the case there is no path, None is returned.
+    """
+    path_latency: float = 0
+    nodes_on_shortest_path = shortest_paths[prev_node.node_id][node.node_id]
+    if len(nodes_on_shortest_path) == 0:
+        return None
+    prev_node_on_path = nodes_on_shortest_path[0]
 
-    for node_path in shortest_paths[prev_node.node_id][node.node_id]:
-        if prev_node_path is None:
-            prev_node_path = node_path
-            continue
-        # extract connection
+    for node_on_path in nodes_on_shortest_path[1:]:
         connection: Connection | None = topology.get_connection(
-            prev_node_path.node_id, node_path.node_id)
+            prev_node_on_path.node_id, node_on_path.node_id)
         if connection is None:
-            logging.debug(f"CONNECTION {prev_node_path.node_id} {node_path.node_id}")
             return None
         path_latency += connection.connection_profile.latency
-        # We assume the data is moved from a node to a node as a whole,
-        #  and is not forwarded further until the whole data is moved.
-        # If the data can be moved from a node to a node as a stream, then
-        # the total_latency is increased only once
-        path_latency += data_to_move_size / connection.connection_profile.throughput
-        prev_node_path = node_path
+        path_latency += compute_data_latency(data_to_move_size, connection.connection_profile.throughput)
+        prev_node_on_path = node_on_path
 
     return path_latency
 
-def get_latency_of_traversal(all_nodes_perm: list[TopologyNode],
-        shortest_paths: dict[NodeId, dict[NodeId, list[TopologyNode]]],
-        command: CreateInstanceCommand, topology_snapshot: TopologySnapshot,
-        data_to_move_size: int):
-    prev_node = None
-    model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
-    data_to_move_size = ceil(model_size_to_store / command.model_meta.n_layers)
-    node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_perm}
-    cur_perm = None
-    cur_perm = all_nodes_perm
-    path_trav_latency = 0
-    for idx, node in enumerate(all_nodes_perm):
-        if model_size_to_store == 0:
-            cur_perm = all_nodes_perm[:idx]
-            break
 
+def get_latency_of_traversal(all_nodes_permuted: list[TopologyNode],
+        shortest_paths: dict[NodeId, dict[NodeId, list[TopologyNode]]],
+        model_size: int, topology: Topology,
+        data_to_move_size: int) -> tuple[list[TopologyNode] | None, float | None]:
+    prev_node = None
+    model_size_to_store: int = model_size
+    node_available_memory: dict[NodeId, int] = {node.node_id: node.node_profile.memory.ram_available for node in all_nodes_permuted}
+    cur_perm = all_nodes_permuted
+    path_travel_latency = 0
+
+    for idx, node in enumerate(all_nodes_permuted):
         memory_used = min(node_available_memory[node.node_id], model_size_to_store)
         node_available_memory[node.node_id] -= memory_used
         model_size_to_store -= memory_used
@@ -133,23 +123,26 @@ def get_latency_of_traversal(all_nodes_perm: list[TopologyNode],
         # network.
         # If we assume consistent flow of bandwidth and compute (all the time model effectively uses bandwidth/cpu and network), we would need to proportionally to account for latency
         # of all the running models.
-        flops_latency = memory_used / 2 / node.node_profile.system.flops_fp16
-        memory_ready_latency=  memory_used / (node.node_profile.system.mem_bandwidth_kbps * 1024)
-        comp_latency = max(flops_latency, memory_ready_latency)
-        path_trav_latency += comp_latency
-        logging.debug(f"Compute latency {comp_latency}")
+        flops_latency = compute_data_latency(convert_bytes_to_words(memory_used), node.node_profile.system.flops_fp16)
+        memory_ready_latency = compute_data_latency(memory_used, (convert_kb_to_bytes(node.node_profile.system.mem_bandwidth_kbps)))
+        access_and_compute_latency = max(flops_latency, memory_ready_latency)
+        path_travel_latency += access_and_compute_latency
         if prev_node is not None:
-            path_latency = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology_snapshot.topology,
-                                                data_to_move_size=float(data_to_move_size))
+            path_latency: float | None = get_latency_on_path(prev_node=prev_node, node=node, shortest_paths=shortest_paths, topology=topology,
+                                                data_to_move_size=data_to_move_size)
             if path_latency is None:
                 return (None, None)
             else:
-                path_trav_latency += path_latency
+                path_travel_latency += path_latency
         prev_node = node
+        if model_size_to_store == 0:
+            cur_perm = all_nodes_permuted[:(idx+1)]
+            break
+
     if model_size_to_store > 0:
         return (None, None)
 
-    return cur_perm, path_trav_latency
+    return cur_perm, path_travel_latency
 """
 GOAL: minimize the total latency from the start to the finish of the neural network inference over
 multiple nodes N_1, N_2, ..., N_n each with the memory M_1, M_2, ..., M_n, that are connected with network links of bandwidth B_{i, j} each with the latency L_{i, j}.
@@ -188,48 +181,30 @@ node with the highest number of FLOPs etc and select for this to be the optimal 
 def get_instance_placements_snapshot(
     command: CreateInstanceCommand,
     topology_snapshot: TopologySnapshot,
-    current_instances: dict[InstanceId, Instance],
-    instance_id: InstanceId | None = None,
-) -> dict[InstanceId, Instance]:
-    if instance_id is None:
-        instance_id = InstanceId()
-    available_models = [current_instances[instance].shard_assignments.model_id for instance in current_instances]
-    if command.model_meta.model_id in available_models:
-        raise ValueError(f"Instance for {command.model_meta.model_id} already exists")
-
+) -> list[TopologyNode]:
     all_nodes = topology_snapshot.topology.list_nodes()
     shortest_paths = topology_snapshot.topology.get_shortest_paths()
     best_perm: list[TopologyNode] = []
-    best_latency: int = sys.maxsize
+    best_latency: float = sys.maxsize
 
-    all_perms = [list(perm) for perm in permutations(all_nodes)]
-    for all_nodes_perm in all_perms:
-        total_latency = 0
-        model_size_to_store: int = command.model_meta.storage_size_kilobytes * 1024
-        data_to_move_size = ceil(model_size_to_store / command.model_meta.n_layers)
-        cur_perm, total_latency = get_latency_of_traversal(all_nodes_perm, shortest_paths, command, topology_snapshot, data_to_move_size)
+    for all_nodes_permuted in permutations(all_nodes):
+        model_size_to_store: int = convert_kb_to_bytes(command.model_meta.storage_size_kilobytes)
+        data_to_move_size: int = ceil(model_size_to_store / command.model_meta.n_layers)
 
-        if cur_perm is not None and (total_latency <= best_latency):
+        total_latency: float | None
+        cur_perm: list[TopologyNode] | None
+        cur_perm, total_latency = get_latency_of_traversal(list(all_nodes_permuted),
+                                                            shortest_paths, model_size_to_store,
+                                                            topology_snapshot.topology, data_to_move_size)
+
+        if cur_perm is not None and total_latency is not None and (total_latency <= best_latency):
             best_perm = cur_perm
             best_latency = total_latency
 
     if len(best_perm) == 0:
         raise ValueError("No cycles found with sufficient memory")
 
-    logging.debug(f"BEST PERMUTATION {best_perm}")
-    shard_assignments = get_shard_assignments(command.model_meta, best_perm, True)
-
-    cycle_digraph: Topology = topology_snapshot.topology.get_subgraph_from_nodes(best_perm)
-    hosts: list[Host] = get_hosts_from_subgraph(cycle_digraph)
-
-    target_instances = deepcopy(current_instances)
-    target_instances[instance_id] = Instance(
-        instance_id=instance_id,
-        instance_active=True,
-        shard_assignments=shard_assignments,
-        hosts=hosts
-    )
-    return target_instances
+    return best_perm
 
 
 def get_instance_placements(
@@ -239,10 +214,35 @@ def get_instance_placements(
     instance_id: InstanceId | None = None,
     placement_algorithm: PlacementAlgorithm = PlacementAlgorithm.Cycle
 ) -> dict[InstanceId, Instance]:
+    if instance_id is None:
+        instance_id = InstanceId()
+    available_models = [current_instances[instance].shard_assignments.model_id for instance in current_instances]
+    if command.model_meta.model_id in available_models:
+        raise ValueError(f"Instance for {command.model_meta.model_id} already exists")
+
+    selected_nodes: list[TopologyNode]
     if placement_algorithm == PlacementAlgorithm.Cycle:
-        return get_instance_placements_cycle(command=command, topology=topology_snapshot.topology, current_instances=current_instances, instance_id=instance_id)
+        selected_nodes = get_instance_placements_cycle(command=command,
+                                                    topology=topology_snapshot.topology)
     else:
-        return get_instance_placements_snapshot(command=command, topology_snapshot=topology_snapshot, current_instances=current_instances, instance_id=instance_id)
+        selected_nodes = get_instance_placements_snapshot(command=command,
+                                                        topology_snapshot=topology_snapshot)
+
+    shard_assignments = get_shard_assignments(command.model_meta, selected_nodes, True)
+
+    cycle_digraph: Topology = topology_snapshot.topology.get_subgraph_from_nodes(selected_nodes)
+    hosts: list[Host] = get_hosts_from_subgraph(cycle_digraph)
+
+    target_instances = deepcopy(current_instances)
+    target_instances[instance_id] = Instance(
+        instance_id=instance_id,
+        instance_active=True,
+        shard_assignments=shard_assignments,
+        hosts=hosts
+    )
+
+    return target_instances
+
 
 def get_transition_events(
     current_instances: dict[InstanceId, Instance],
@@ -269,14 +269,11 @@ def get_transition_events(
                     instance_id=instance_id,
                 )
             )
-
-    # Here we check if the instance is activated/deactivated events.
-    # We cannot generate NodePerformanceMeasured and WorkerStatusUpdated events,
-    # since instances do not contain any performance information or worker status info.
-    # So the other WorkerStatusUpdated should be generated by some callback from the worker.
-    # NodePerformanceMeasured should be generated by some worker that tracks the state of the system.
-
-    for instance_id in current_instances:
+        # Here  we check if the instance is activated/deactivated events.
+        # We cannot generate NodePerformanceMeasured and WorkerStatusUpdated events,
+        # since instances do not contain any performance information or worker status info.
+        # So the other WorkerStatusUpdated should be generated by some callback from the worker.
+        # NodePerformanceMeasured should be generated by some worker that tracks the state of the system.
         if instance_id in target_instances:
             if current_instances[instance_id].instance_active and not target_instances[instance_id].instance_active:
                 events.append(
@@ -297,7 +294,6 @@ def get_transition_events(
                         event_id=EventId(),
                         instance_id=instance_id,)
                 )
-
 
     return events
 
